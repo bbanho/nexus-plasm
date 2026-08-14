@@ -1,0 +1,9 @@
+{
+  "name": "Nexus Plasm",
+  "description": "Clipboard FIFO + LLM processor integration for GNOME Shell",
+  "uuid": "nexus-plasm@bbanho",
+  "shell-version": ["42", "43", "44", "45", "46"],
+  "version": "0.1.0",
+  "url": "https://github.com/bbanho/nexus-plasm",
+  "author": "bbanho"
+}
