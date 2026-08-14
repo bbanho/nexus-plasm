@@ -20,6 +20,9 @@ Uso:
   plasm process-all --preset fix-pt Processa todos os itens e substitui pelo resultado
   plasm paste-all                   Cola todo o conteúdo concatenado
   plasm status                      Mostra tamanho da pilha, imagem no clipboard e LLM ativo
+  plasm macro                       Lista macros registradas
+  plasm macro-add --trigger NOME --action "plasm ..." --preset fix-pt   Registra macro
+  plasm macro-suggest               Sugere macros com base no cache de uso
   plasm daemon [--quiet]            Inicia monitoramento automático do clipboard
   plasm stop                        Para o daemon em execução
   plasm --help
@@ -82,6 +85,7 @@ async function runCli() {
   const { loadStack, push, pop, peek, list, clear, size } = await import(path.join(__dirname, '..', 'lib', 'stack.js'));
   const { process } = await import(path.join(__dirname, '..', 'lib', 'processor.js'));
   const { startWatch, stopWatch } = await import(path.join(__dirname, '..', 'lib', 'daemon.js'));
+  const { loadMacros, saveMacros, addMacro, suggestMacros } = await import(path.join(__dirname, '..', 'lib', 'macros.js'));
 
   const config = await loadConfig();
   const effectiveConfig = { ...config };
@@ -199,6 +203,34 @@ async function runCli() {
       const joined = items.join('\n\n');
       await writeText(joined);
       console.log(JSON.stringify({ ok: true, count: items.length }));
+      await appendLearned({ type: 'chain', from: 'paste-all', to: 'paste-all' });
+      break;
+    }
+
+    case 'macro': {
+      const macros = await loadMacros();
+      console.log(JSON.stringify({ macros }, null, 2));
+      break;
+    }
+
+    case 'macro-add': {
+      if (!parsed.opts.trigger || !parsed.opts.action) {
+        console.error('Use --trigger NOME --action "plasm ...".');
+        exit(1);
+        return;
+      }
+      const macro = await addMacro({
+        trigger: parsed.opts.trigger,
+        action: parsed.opts.action,
+        preset: parsed.opts.preset || null,
+      });
+      console.log(JSON.stringify({ ok: true, macro }));
+      break;
+    }
+
+    case 'macro-suggest': {
+      const suggestions = await suggestMacros();
+      console.log(JSON.stringify({ suggestions }, null, 2));
       break;
     }
 
