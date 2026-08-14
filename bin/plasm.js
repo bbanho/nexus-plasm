@@ -20,11 +20,14 @@ Uso:
   plasm process-all --preset fix-pt Processa todos os itens e substitui pelo resultado
   plasm paste-all                   Cola todo o conteúdo concatenado
   plasm status                      Mostra tamanho da pilha, imagem no clipboard e LLM ativo
+  plasm daemon [--quiet]            Inicia monitoramento automático do clipboard
+  plasm stop                        Para o daemon em execução
   plasm --help
 
 Opções:
   --provider ollama|gemini   Sobrescreve o provedor padrão
   --model <modelo>          Sobrescreve o modelo padrão
+  --quiet                   Modo silencioso para daemon
 `);
 }
 
@@ -78,6 +81,7 @@ async function runCli() {
   const { readText, writeText, hasImage } = await import(path.join(__dirname, '..', 'lib', 'clipboard.js'));
   const { loadStack, push, pop, peek, list, clear, size } = await import(path.join(__dirname, '..', 'lib', 'stack.js'));
   const { process } = await import(path.join(__dirname, '..', 'lib', 'processor.js'));
+  const { startWatch, stopWatch } = await import(path.join(__dirname, '..', 'lib', 'daemon.js'));
 
   const config = await loadConfig();
   const effectiveConfig = { ...config };
@@ -206,7 +210,19 @@ async function runCli() {
     }
 
     case 'daemon': {
-      console.log('watch mode stub');
+      const stackPath = (effectiveConfig.paths && effectiveConfig.paths.stack_file) || STACK_FILE;
+      const logPath = (effectiveConfig.paths && effectiveConfig.paths.log_file) || path.join(os.homedir(), '.local', 'share', 'nexus-plasm', 'logs', 'plasm.log');
+      await startWatch({
+        stackPath,
+        logPath,
+        pollIntervalMs: effectiveConfig.daemon?.pollIntervalMs || 1000,
+        quiet: parsed.opts.quiet || false,
+      });
+      break;
+    }
+
+    case 'stop': {
+      await stopWatch();
       break;
     }
 
