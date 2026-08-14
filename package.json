@@ -1,5 +1,6 @@
 {
   "name": "nexus-plasm",
+  "type": "module",
   "version": "0.1.0",
   "private": true,
   "description": "Clipboard FIFO + LLM processor for Hyprland/Wayland",
