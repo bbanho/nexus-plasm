@@ -1,51 +1,85 @@
 #!/usr/bin/env node
-import { parseArgs } from 'node:util';
 import path from 'node:path';
 import os from 'node:os';
 
 import { loadConfig } from '../lib/config.js';
-import { readText, writeText, hasImage, pushToCliphist } from '../lib/clipboard.js';
+import { readText, writeText, hasImage } from '../lib/clipboard.js';
 import { loadStack, push, pop, peek, list, clear, size } from '../lib/stack.js';
 import { process } from '../lib/processor.js';
 
 const STACK_FILE = path.join(os.homedir(), '.local', 'share', 'nexus-plasm', 'stack.json');
 
-async function runCli(argv) {
-  const { values } = parseArgs({
-    args: argv,
-    options: {
-      help: { type: 'boolean' },
-      model: { type: 'string' },
-      provider: { type: 'string' },
-      preset: { type: 'string' },
-      all: { type: 'boolean', short: 'a' },
-    },
-  });
+function usage() {
+  console.log(`
+nexus-plasm
 
-  if (values.help) {
-    printHelp();
+Uso:
+  plasm push                        Insere o clipboard atual na pilha FIFO
+  plasm pop                         Cola o último item
+  plasm peek                        Mostra o último item sem remover
+  plasm list                        Mostra a pilha atual
+  plasm clear                       Limpa a pilha
+  plasm process --preset fix-pt     Processa o último item e substitui pelo resultado
+  plasm process-all --preset fix-pt Processa todos os itens e substitui pelo resultado
+  plasm paste-all                   Cola todo o conteúdo concatenado
+  plasm status                      Mostra tamanho da pilha, imagem no clipboard e LLM ativo
+  plasm --help
+
+Opções:
+  --provider ollama|gemini   Sobrescreve o provedor padrão
+  --model <modelo>          Sobrescreve o modelo padrão
+`);
+}
+
+function parseCli(argv) {
+  if (!argv || !argv.length || argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') {
+    return { command: 'help' };
+  }
+
+  const command = argv[0];
+  const rest = argv.slice(1);
+  const opts = {};
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const token = rest[i];
+    if (token === '--provider' && rest[i + 1]) {
+      opts.provider = rest[i + 1];
+      i += 1;
+    } else if (token === '--model' && rest[i + 1]) {
+      opts.model = rest[i + 1];
+      i += 1;
+    } else if (token === '--preset' && rest[i + 1]) {
+      opts.preset = rest[i + 1];
+      i += 1;
+    } else if (token === '--all' || token === '-a') {
+      opts.all = true;
+    } else if (token.startsWith('--')) {
+      console.error(`Opção desconhecida: ${token}`);
+      process.exit(1);
+    }
+  }
+
+  return { command, opts };
+}
+
+async function runCli() {
+  const argv = process.argv.slice(2);
+  const parsed = parseCli(argv);
+  if (parsed.command === 'help') {
+    usage();
     process.exit(0);
   }
 
   const config = await loadConfig();
-  const stack = await loadStack(STACK_FILE);
-
-  const cmd = argv[2];
-  if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') {
-    printHelp();
-    process.exit(0);
-  }
-
   const effectiveConfig = { ...config };
-  if (values.model) {
+
+  if (parsed.opts.provider) effectiveConfig.default_llm = parsed.opts.provider;
+  if (parsed.opts.model) {
     if (!effectiveConfig.ollama) effectiveConfig.ollama = {};
-    effectiveConfig.ollama.default_model = values.model;
-  }
-  if (values.provider) {
-    effectiveConfig.default_llm = values.provider;
+    effectiveConfig.ollama.default_model = parsed.opts.model;
   }
 
-  switch (cmd) {
+  switch (parsed.command) {
     case 'push': {
       const text = await readText();
       if (!text) {
@@ -91,7 +125,7 @@ async function runCli(argv) {
     }
 
     case 'process': {
-      if (!values.preset) {
+      if (!parsed.opts.preset) {
         console.error('Use --preset NOME_DO_PRESET.');
         process.exit(1);
       }
@@ -100,23 +134,19 @@ async function runCli(argv) {
         console.error('Pilha vazia.');
         process.exit(1);
       }
-      const out = await process({
-        text,
-        preset: values.preset,
-        config: effectiveConfig,
-      });
+      const out = await process({ text, preset: parsed.opts.preset, config: effectiveConfig });
       if (!out) {
         console.error('Sem resposta do LLM.');
         process.exit(1);
       }
       await push(out, STACK_FILE);
       await writeText(out);
-      console.log(JSON.stringify({ ok: true, preset: values.preset, result: out.slice(0, 120) }));
+      console.log(JSON.stringify({ ok: true, preset: parsed.opts.preset, result: out.slice(0, 120) }));
       break;
     }
 
     case 'process-all': {
-      if (!values.preset) {
+      if (!parsed.opts.preset) {
         console.error('Use --preset NOME_DO_PRESET.');
         process.exit(1);
       }
@@ -127,7 +157,7 @@ async function runCli(argv) {
       }
       const results = [];
       for (const item of items) {
-        const out = await process({ text: item, preset: values.preset, config: effectiveConfig });
+        const out = await process({ text: item, preset: parsed.opts.preset, config: effectiveConfig });
         if (out) results.push(out);
       }
       await clear(STACK_FILE);
@@ -163,32 +193,10 @@ async function runCli(argv) {
     }
 
     default:
-      console.error(`Comando desconhecido: ${cmd}`);
-      printHelp();
+      console.error(`Comando desconhecido: ${parsed.command}`);
+      usage();
       process.exit(1);
   }
-}
-
-function printHelp() {
-  console.log(`
-nexus-plasm
-
-Uso:
-  plasm push                        Insere o clipboard atual na pilha
-  plasm pop                         Cola o último item
-  plasm peek                        Mostra o último item sem remover
-  plasm list                        Mostra a pilha atual
-  plasm clear                       Limpa a pilha
-  plasm process --preset fix-pt     Processa o último item e substitui pelo resultado
-  plasm process-all --preset fix-pt Processa todos os itens e substitui pelo resultado
-  plasm paste-all                   Cola todo o conteúdo concatenado
-  plasm status                      Mostra tamanho da pilha, imagem no clipboard e LLM ativo
-  plasm --help
-
-Opções:
-  --provider ollama|gemini   Sobrescreve o provedor padrão
-  --model <modelo>          Sobrescreve o modelo padrão
-`);
 }
 
 runCli(process.argv);
