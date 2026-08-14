@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import os from 'node:os';
+import url from 'node:url';
 
-import { loadConfig } from '../lib/config.js';
-import { readText, writeText, hasImage } from '../lib/clipboard.js';
-import { loadStack, push, pop, peek, list, clear, size } from '../lib/stack.js';
-import { process } from '../lib/processor.js';
-
+const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const STACK_FILE = path.join(os.homedir(), '.local', 'share', 'nexus-plasm', 'stack.json');
 
 function usage() {
@@ -55,20 +52,32 @@ function parseCli(argv) {
       opts.all = true;
     } else if (token.startsWith('--')) {
       console.error(`Opção desconhecida: ${token}`);
-      process.exit(1);
+      exit(1);
     }
   }
 
   return { command, opts };
 }
 
+function exit(code) {
+  if (globalThis.process?.exit) {
+    globalThis.process.exit(code);
+  }
+}
+
 async function runCli() {
-  const argv = process.argv.slice(2);
+  const argv = globalThis.process?.argv?.slice?.(2) ?? [];
   const parsed = parseCli(argv);
   if (parsed.command === 'help') {
     usage();
-    process.exit(0);
+    exit(0);
+    return;
   }
+
+  const { loadConfig } = await import(path.join(__dirname, '..', 'lib', 'config.js'));
+  const { readText, writeText, hasImage } = await import(path.join(__dirname, '..', 'lib', 'clipboard.js'));
+  const { loadStack, push, pop, peek, list, clear, size } = await import(path.join(__dirname, '..', 'lib', 'stack.js'));
+  const { process } = await import(path.join(__dirname, '..', 'lib', 'processor.js'));
 
   const config = await loadConfig();
   const effectiveConfig = { ...config };
@@ -84,7 +93,8 @@ async function runCli() {
       const text = await readText();
       if (!text) {
         console.error('Clipboard vazio.');
-        process.exit(1);
+        exit(1);
+        return;
       }
       await push(text, STACK_FILE);
       console.log(JSON.stringify({ ok: true, size: await size(STACK_FILE), preview: text.slice(0, 80) }));
@@ -95,12 +105,14 @@ async function runCli() {
       const text = await pop(STACK_FILE);
       if (!text) {
         console.error('Pilha vazia.');
-        process.exit(1);
+        exit(1);
+        return;
       }
       const ok = await writeText(text);
       if (!ok) {
         console.error('Falha ao colar no clipboard.');
-        process.exit(1);
+        exit(1);
+        return;
       }
       console.log(JSON.stringify({ ok: true, pasted: text.slice(0, 80) }));
       break;
@@ -127,17 +139,20 @@ async function runCli() {
     case 'process': {
       if (!parsed.opts.preset) {
         console.error('Use --preset NOME_DO_PRESET.');
-        process.exit(1);
+        exit(1);
+        return;
       }
       const text = await peek(STACK_FILE);
       if (!text) {
         console.error('Pilha vazia.');
-        process.exit(1);
+        exit(1);
+        return;
       }
       const out = await process({ text, preset: parsed.opts.preset, config: effectiveConfig });
       if (!out) {
         console.error('Sem resposta do LLM.');
-        process.exit(1);
+        exit(1);
+        return;
       }
       await push(out, STACK_FILE);
       await writeText(out);
@@ -148,12 +163,14 @@ async function runCli() {
     case 'process-all': {
       if (!parsed.opts.preset) {
         console.error('Use --preset NOME_DO_PRESET.');
-        process.exit(1);
+        exit(1);
+        return;
       }
       const items = await list(STACK_FILE);
       if (!items.length) {
         console.error('Pilha vazia.');
-        process.exit(1);
+        exit(1);
+        return;
       }
       const results = [];
       for (const item of items) {
@@ -172,7 +189,8 @@ async function runCli() {
       const items = await list(STACK_FILE);
       if (!items.length) {
         console.error('Pilha vazia.');
-        process.exit(1);
+        exit(1);
+        return;
       }
       const joined = items.join('\n\n');
       await writeText(joined);
@@ -195,8 +213,8 @@ async function runCli() {
     default:
       console.error(`Comando desconhecido: ${parsed.command}`);
       usage();
-      process.exit(1);
+      exit(1);
   }
 }
 
-runCli(process.argv);
+runCli();
