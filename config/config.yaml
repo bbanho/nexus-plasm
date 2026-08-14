@@ -1,0 +1,20 @@
+max_items: 50
+dedupe: true
+default_llm: ollama
+ollama:
+  base_url: http://localhost:11434
+  default_model: qwen2.5:7b
+  timeout_ms: 120000
+gemini:
+  base_url: https://generativelanguage.googleapis.com
+  default_model: gemini-2.0-flash
+  api_key_env: GEMINI_API_KEY
+  timeout_ms: 120000
+presets:
+  fix-pt: "Corrija o português, mantendo o sentido e o tom."
+  summarize: "Resuma em no máximo 2 linhas, em português."
+  explain-code: "Explique este código de forma concisa, em português."
+  translate-en: "Traduza para inglês natural, mantendo termos técnicos quando necessário."
+paths:
+  stack_file: ~/.local/share/nexus-plasm/stack.json
+  log_file: ~/.local/share/nexus-plasm/logs/plasm.log
