@@ -1,26 +1,5 @@
 # nexus-plasm — Uso
 
-## Instalação
-
-```bash
-cp -r ~/repos/nexus-plasm ~/.local/state/nexus-plasm || true
-mkdir -p ~/.config/nexus-plasm
-cp ~/repos/nexus-plasm/config/config.yaml ~/.config/nexus-plasm/config.yaml
-```
-
-Defina a chave Gemini se for usar:
-
-```bash
-export GEMINI_API_KEY='sua-chave'
-```
-
-Coloque o binário no PATH:
-
-```bash
-ln -sf ~/repos/nexus-plasm/bin/plasm.js ~/.local/bin/plasm
-chmod +x ~/repos/nexus-plasm/bin/plasm.js
-```
-
 ## Comandos
 
 ```bash
@@ -33,7 +12,35 @@ plasm status
 plasm process --preset fix-pt
 plasm process-all --preset fix-pt
 plasm paste-all
+plasm daemon [--quiet]
+plasm stop
 plasm --help
+```
+
+## Modo daemon
+
+Inicia monitoramento contínuo do clipboard:
+
+```bash
+plasm daemon
+```
+
+Com modo silencioso:
+
+```bash
+plasm daemon --quiet
+```
+
+Para parar:
+
+```bash
+plasm stop
+```
+
+Logs:
+
+```bash
+~/.local/share/nexus-plasm/logs/plasm.log
 ```
 
 ## Binds recomendados
@@ -46,3 +53,9 @@ bind = SUPER, V, exec, plasm pop
 bind = CTRL, C, exec, plasm push
 bind = SUPER, B, exec, plasm status
 ```
+
+## Observação
+
+- A pilha real está em `~/.local/share/nexus-plasm/stack.json`.
+- O daemon usa `wl-paste` como primário no Wayland.
+- Logs recomendados: `~/.local/share/nexus-plasm/logs/plasm.log`.
