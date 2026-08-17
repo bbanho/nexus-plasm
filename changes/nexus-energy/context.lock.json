@@ -1,0 +1,32 @@
+{
+  "change_id": "nexus-energy",
+  "created_at": "2026-08-17",
+  "base_commit": "FROZEN_UNTIL_REPO_AVAILABLE",
+  "architecture_refs": [
+    "ADR-0030 AST Parsing",
+    "DEC-NEXUS-\u03a6 Energy Function"
+  ],
+  "code_locations": [
+    "conductor-fsm/src/conductor_fsm.py",
+    "conductor-fsm/sql/conductor_kb.sql",
+    "nexus-plasm/changes/TEMPLATE"
+  ],
+  "contracts": [
+    "EnergyResult",
+    "IngestionRun",
+    "GraphEdge"
+  ],
+  "tests": [
+    "tests/energy_test.py",
+    "artifacts/fixtures/*.json"
+  ],
+  "risks": [
+    "limiares fixos podem gerar falsos positivos em corpus pequeno",
+    "\u03a6 n\u00e3o deve bloquear produ\u00e7\u00e3o sem decis\u00e3o humana expl\u00edcita"
+  ],
+  "evidence_required": [
+    "contagem edges antes/depois",
+    "teste determin\u00edstico",
+    "query SQL por run_id"
+  ]
+}
