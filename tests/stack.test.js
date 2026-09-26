@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-import { loadStack, push, pop, peek, list, clear, size, setMaxItems } from '../lib/stack.js';
+import { loadStack, push, pop, peek, list, clear, size, setMaxItems } from '../lib/core/stack.js';
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'nexus-plasm-'));
 const stackFile = path.join(tmp, 'stack.json');

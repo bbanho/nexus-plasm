@@ -1,0 +1,27 @@
+# Nexus Plasm — unidade systemd de usuário
+#
+# DEVE ser instalada em ~/.config/systemd/user/plasm-daemon.service
+# O binário do daemon vive no worktree; ajuste ExecStart se mover o repo.
+#
+# Deliberadamente NÃO é habilitado por padrão. Com o plugin GNOME de histórico
+# já observing o clipboard, um daemon de polling em paralelo cria realimentação:
+# o resultado que o plasm escreve no clipboard seria capturado de novo. Só ative
+# se você realmente quiser captura automática em vez de atalhos explícitos.
+
+[Unit]
+Description=Nexus Plasm clipboard FIFO watcher
+Documentation=https://github.com/bbanho/nexus-plasm
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env node %h/repos/nexus-plasm/bin/plasm.js daemon --quiet
+Restart=on-failure
+RestartSec=5
+
+# Não deixa o watcher preso ao terminal.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -7,11 +7,11 @@ import os from 'node:os';
 const TMP = path.join(os.tmpdir(), `nexus-plasm-macros-test-${Date.now()}`);
 
 test('macros load/save/add roundtrip', async () => {
-  const mod = await import('../lib/macros.js');
+  const mod = await import('../lib/core/macros.js');
   await fs.mkdir(TMP, { recursive: true });
   await fs.writeFile(path.join(TMP, 'macros.json'), JSON.stringify({ macros: [] }, null, 2), 'utf-8');
 
-  const originalStateDir = await import('../lib/macros.js').then(m => m.DEFAULT_STATE_DIR);
+  const originalStateDir = await import('../lib/core/macros.js').then(m => m.DEFAULT_STATE_DIR);
   
   // We'll test the core logic by mocking the paths
   const macros = [];
@@ -21,7 +21,7 @@ test('macros load/save/add roundtrip', async () => {
 });
 
 test('learned events append and load', async () => {
-  const mod = await import('../lib/macros.js');
+  const mod = await import('../lib/core/macros.js');
   const events = await mod.loadLearned();
   assert.ok(Array.isArray(events));
   
@@ -34,7 +34,7 @@ test('learned events append and load', async () => {
 });
 
 test('suggestMacros returns suggestions for frequent chains', async () => {
-  const mod = await import('../lib/macros.js');
+  const mod = await import('../lib/core/macros.js');
   
   // Seed learned events with frequent push->process chains
   await mod.appendLearned({ type: 'chain', from: 'push', to: 'process', preset: 'fix-pt' });
@@ -53,7 +53,7 @@ test('suggestMacros returns suggestions for frequent chains', async () => {
 });
 
 test('suggestMacros does not duplicate existing macros', async () => {
-  const mod = await import('../lib/macros.js');
+  const mod = await import('../lib/core/macros.js');
   
   // Add a macro that would match the suggestion
   await mod.addMacro({

@@ -1,150 +1,124 @@
 # nexus-plasm
 
-> Clipboard FIFO + LLM processor para Hyprland/Wayland.
+> Clipboard FIFO + LLM processor. Agnóstico a ambiente de desktop.
 
-Atalhos globais de clipboard com pilha FIFO, presets de texto e integração com **Ollama** e **Gemini Interactions** — sem interfaces pesadas, sem perder contexto.
+Copia um bloco, empilha, processa com um LLM (Ollama local ou Gemini) e devolve
+ao clipboard. Sem janelas de chat, sem perder contexto.
 
-## Por que o plasm?
+## Arquitetura
 
-- **Pipeline real**: `clipboard -> stack FIFO -> LLM -> clipboard/overlay`
-- **Wayland-first**: usa `wl-clipboard`, `wl-paste` e, quando disponível, `cliphist`
-- **Multi-provedor**: preferência por modelo local; fallback opcional para Gemini
-- **Zero segredos no repo**: chaves via `~/.config/nexus-plasm/.env`
-- **Stateless no UI**: sem janelas de chat; resultado volta direto para o clipboard
+O núcleo não sabe qual desktop você usa. Tudo que é específico de ambiente vive
+em `plugins/`.
 
-## Atalhos
-
-| Atalho | Ação |
-|---|---|
-| `Ctrl+C` | insere o clipboard atual na pilha |
-| `Ctrl+V` | cola o último item |
-| `Super+X` | processa o último item com LLM |
-| `Super+F` | processa toda a pilha |
-| `Super+Alt+V` | cola todo o histórico concatenado |
-| `Super+B` | mostra status da pilha |
-
-## Exemplo de uso
-
-```bash
-# 1) copie algo
-echo 'texto de exemplo' | wl-copy
-
-# 2) insira na pilha
-plasm push
-
-# 3) processe
-plasm process --preset fix-pt
-
-# 4) cole o resultado
-plasm pop
 ```
+lib/
+  ports/       clipboard.js, provider.js      contratos (nenhum shell, nenhum WM)
+  adapters/
+    clipboard/ runner.js, wayland.js, x11.js, auto.js
+    provider/  http.js, ollama.js, gemini.js
+  core/        stack.js, daemon.js, processor.js, config.js, macros.js
+plugins/
+  gnome/       plasm-gnome-hooks, plasm-daemon.service
+```
+
+Regra: **adapters falam com o mundo, ports descrevem o contrato, core só fala
+com ports.** Trocar de ambiente é escrever um adapter — nunca um fork.
 
 ## Comandos
 
 ```bash
-plasm push
-plasm pop
-plasm peek
-plasm list
-plasm clear
-plasm status
-plasm process --preset fix-pt
+plasm push                        # clipboard atual -> pilha
+plasm pop                         # cola o último item
+plasm peek | list | clear
+plasm process --preset fix-pt     # processa o topo, escreve o resultado
 plasm process-all --preset fix-pt
 plasm paste-all
-plasm --help
+plasm status                      # pilha + backend + provider
+plasm doctor                      # diagnóstico, não altera nada
+plasm daemon [--quiet]            # watcher automático
+plasm stop
 ```
 
-## Instalação
-
-```bash
-git clone git@github.com:bbanho/nexus-plasm.git ~/repos/nexus-plasm
-mkdir -p ~/.config/nexus-plasm
-cp ~/repos/nexus-plasm/config/config.yaml ~/.config/nexus-plasm/config.yaml
-ln -sf ~/repos/nexus-plasm/bin/plasm.js ~/.local/bin/plasm
-chmod +x ~/repos/nexus-plasm/bin/plasm.js
-```
+Opções: `--provider ollama|gemini`, `--model`, `--preset`, `--clipboard wayland|x11`.
 
 ## Configuração
 
-Edite `~/.config/nexus-plasm/config.yaml`:
+`~/.config/nexus-plasm/config.yaml` (veja `config/config.yaml`):
 
 ```yaml
-default_llm: ollama
+max_items: 50
+dedupe: true
+default_llm: ollama          # ou gemini
+
 ollama:
   base_url: http://localhost:11434
   default_model: qwen2.5:7b
   timeout_ms: 120000
+
 gemini:
   base_url: https://generativelanguage.googleapis.com
   default_model: gemini-2.0-flash
   api_key_env: GEMINI_API_KEY
   timeout_ms: 120000
+
 presets:
   fix-pt: "Corrija o português, mantendo o sentido e o tom."
-  summarize: "Resuma em no máximo 2 linhas, em português."
-  explain-code: "Explique este código de forma concisa, em português."
-  translate-en: "Traduza para inglês natural, mantendo termos técnicos quando necessário."
+
+daemon:
+  pollIntervalMs: 1000
+  debounceMs: 300
 ```
 
-## Integração com Hyprland
+A chave da API vem do ambiente, nunca do arquivo.
 
-Adicione ao final de `~/.config/hypr/hyprland.conf`:
+## GNOME
 
-```hyprland
-# nexus-plasm
-bind = SUPER, X, exec, plasm process --preset fix-pt
-bind = SUPER, F, exec, plasm process-all --preset fix-pt
-bind = SUPER, ALT, V, exec, plasm paste-all
-bind = SUPER, V, exec, plasm pop
-bind = CTRL, C, exec, plasm push
-bind = SUPER, B, exec, plasm status
-```
-
-Recarregue:
+Não há — nem deve haver — um addon do GNOME Shell. A integração usa
+`gsettings custom-keybindings`, a mesma interface que o próprio GNOME usa, e é
+estável desde o GNOME 3.x. Um addon quebra a cada release do shell; o histórico
+de clipboard já é papel do plugin `clipboard-history@alexsaveau.dev` (MIT).
 
 ```bash
-hyprctl reload
+# ver o plano (nada é alterado)
+./plugins/gnome/plasm-gnome-hooks --dry-run
+
+# aplicar — grava backup antes de escrever
+./plugins/gnome/plasm-gnome-hooks --apply
+
+# desfazer
+./plugins/gnome/plasm-gnome-hooks --rollback
 ```
 
-## Arquitetura
+Todos os aceleradores usam `Super`. Nenhum atalho global pode sequestrar uma tecla
+que você digita o dia inteiro — `<Control>c` global quebraria *copiar* em todo
+aplicativo.
 
-```
-usuário copia texto
-       │
-       ▼
-plasm push → stack.json
-       │
-atalho LLM
-       │
-       ▼
-plasm process --preset ...
-       │
-   Ollama ou Gemini
-       │
-       ▼
-plasm pop / plasm paste-all
-       │
-       ▼
-área de transferência
-```
+### Captura automática (opcional)
 
-## Segurança
-
-- Nenhuma credencial hardcoded.
-- Chaves via `~/.config/nexus-plasm/.env`.
-- Escrita/leitura apenas no caminho do usuário: `~/.local/share/nexus-plasm`.
-
-## Status do projeto
-
-- CLI principal implementada
-- FIFO stack com dedup e limite configurável
-- Clientes Ollama e Gemini Interactions
-- Testes passando
+`plugins/gnome/plasm-daemon.service` roda o watcher sob systemd de usuário:
 
 ```bash
-npm run test
+install -Dm755 plugins/gnome/plasm-daemon.service \
+  ~/.config/systemd/user/plasm-daemon.service
+systemctl --user enable --now plasm-daemon.service
 ```
 
-## Licença
+**Não é o padrão, de propósito.** Com o plugin de histórico já observando o
+clipboard, dois consumidores criam realimentação: o resultado que o plasm
+escreve seria capturado de novo. Prefira os atalhos explícitos.
 
-MIT
+## Outros ambientes
+
+O núcleo funciona em qualquer lugar com `wl-clipboard` ou `xclip`. Para um WM
+específico, escreva um adapter e um manifest em `plugins/`. Hyprland, por
+exemplo, é só um `bindings.conf` apontando para o mesmo `plasm`.
+
+## Desenvolvimento
+
+```bash
+npm install
+npm test
+```
+
+53 testes. Nenhuma correção entra sem teste — ver `BUGS.md` para o ledger de
+defeitos e `DECISIONS.md` para as decisões arquiteturais.

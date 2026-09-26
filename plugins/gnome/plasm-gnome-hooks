@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# plasm-gnome-hooks — gerencia atalhos globais do plasm via gsettings.
+#
+# Usa SOMENTE org.gnome.settings-daemon.plugins.media-keys.custom-keybindings
+# (estável desde o GNOME 3.x) em vez de escrever um GNOME Shell addon: um
+# addon quebra a cada release do shell e o próprio GNOME usa dconf para a
+# mesma finalidade.
+#
+# Seguro por padrão: sem --apply nada é alterado. Com --apply, um backup
+# legível é gravado antes de qualquer escrita e o estado anterior é restaurável
+# com --rollback.
+#
+# Uso:
+#   plasm-gnome-hooks            # mostra o plano
+#   plasm-gnome-hooks --dry-run  # mostra o plano
+#   plasm-gnome-hooks --apply    # aplica
+#   plasm-gnome-hooks --rollback # desfaz usando o backup
+
+set -euo pipefail
+
+SCHEMA="org.gnome.settings-daemon.plugins.media-keys.custom-keybindings"
+BACKUP_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nexus-plasm/backups"
+BACKUP_FILE="$BACKUP_DIR/gnome-keybindings.json"
+
+PLASM_BIN="${PLASM_BIN:-plasm}"
+PLASM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+DEFAULT_PLASM="$PLASM_DIR/bin/plasm.js"
+
+# Nome do atalho -> (acelerador, args do plasm)
+#
+# Nenhum acelerador pode ser uma tecla que o usuário digitou ontem: <Control>c
+# é copiar em todo app com foco, e um global aqui o desfuncionaliza. Todos os
+# atalhos usam Super para que a tecla só dispare fora de campos de texto.
+HOOKS=(
+  "nexus-plasm-push|<Super>c|push"
+  "nexus-plasm-pop|<Super>v|pop"
+  "nexus-plasm-process|<Super>x|process --preset fix-pt"
+  "nexus-plasm-process-all|<Super>f|process-all --preset fix-pt"
+  "nexus-plasm-paste-all|<Super><Alt>v|paste-all"
+  "nexus-plasm-status|<Super>b|status"
+)
+
+MODE="${1:-plan}"
+
+if [[ "$MODE" != "--apply" && "$MODE" != "--rollback" && "$MODE" != "--dry-run" && "$MODE" != "--plan" ]]; then
+  echo "Uso: $(basename "$0") [--plan|--dry-run|--apply|--rollback]" >&2
+  exit 1
+fi
+
+command -v gsettings >/dev/null || { echo "gsettings não encontrado (instale glib2-devel/gnome-settings-daemon)." >&2; exit 1; }
+
+# Resolve o executável do plasm: o instalado no PATH, senão o bin do repo.
+if ! command -v "$PLASM_BIN" >/dev/null 2>&1; then
+  if [[ -f "$DEFAULT_PLASM" ]] && command -v node >/dev/null 2>&1; then
+    PLASM_BIN="node $DEFAULT_PLASM"
+  else
+    echo "plasm não encontrado no PATH. Defina PLASM_BIN=/caminho/plasm." >&2
+    exit 1
+  fi
+fi
+
+free_slots() {
+  # Slots custom0..customN ainda não usados por outros atalhos.
+  local out=()
+  for i in $(seq 0 11); do
+    local name
+    name="$(gsettings get "$SCHEMA:custom$i" name 2>/dev/null || echo "''")"
+    if [[ "$name" == "''" || "$name" == "\"\"" || -z "$name" ]]; then
+      out+=("$i")
+    fi
+  done
+  printf '%s\n' "${out[@]:-}"
+}
+
+managed_slot() {
+  # Índice do slot cujo name é exatamente $1
+  for i in $(seq 0 11); do
+    local name
+    name="$(gsettings get "$SCHEMA:custom$i" name 2>/dev/null | tr -d "'")"
+    if [[ "$name" == "$1" ]]; then
+      echo "$i"
+      return 0
+    fi
+  done
+  return 1
+}
+
+backup() {
+  mkdir -p "$BACKUP_DIR"
+  {
+    echo "{"
+    echo "  \"created\": \"$(date -Iseconds)\","
+    echo "  \"schema\": \"$SCHEMA\","
+    echo "  \"keybindings\": [$(gsettings get "$SCHEMA" custom-keybindings)]"
+    echo "}"
+  } > "$BACKUP_FILE"
+  echo "Backup gravado em: $BACKUP_FILE" >&2
+}
+
+apply() {
+  local slots=()
+  mapfile -t slots < <(free_slots)
+  local changed=0
+
+  for hook in "${HOOKS[@]}"; do
+    IFS='|' read -r name accel args <<< "$hook"
+
+    local slot
+    if slot="$(managed_slot "$name")"; then
+      :
+    else
+      if [[ -z "${slots[0]:-}" ]]; then
+        echo "AVISO: sem slots custom-keybindings livres; pulando $name" >&2
+        continue
+      fi
+      slot="${slots[0]}"
+      slots=("${slots[@]:1}")
+    fi
+
+    local cmd="$PLASM_BIN $args"
+    echo "custom$slot  $accel  $cmd"
+
+    if [[ "$MODE" == "--apply" ]]; then
+      gsettings set "$SCHEMA:custom$slot" name "'$name'"
+      gsettings set "$SCHEMA:custom$slot" command "'$cmd'"
+      gsettings set "$SCHEMA:custom$slot" binding "'$accel'"
+      changed=1
+    fi
+  done
+
+  if [[ "$MODE" == "--apply" && $changed -eq 1 ]]; then
+    # Preserva a ordem canônica; sem isso o GNOME pode ignorar entradas.
+    local order='[]'
+    for i in $(seq 0 11); do
+      local n
+      n="$(gsettings get "$SCHEMA:custom$i" name 2>/dev/null | tr -d "'")"
+      [[ -n "$n" ]] && order="$order ['/$SCHEMA/custom$i/']"
+    done
+    gsettings set "$SCHEMA" custom-keybindings "${order%% *}"
+  fi
+}
+
+rollback() {
+  if [[ ! -f "$BACKUP_FILE" ]]; then
+    echo "Nenhum backup em $BACKUP_FILE" >&2
+    exit 1
+  fi
+  local saved
+  saved="$(python3 -c "import json,sys; print(json.load(open('$BACKUP_FILE'))['keybindings'])" 2>/dev/null || true)"
+  if [[ -z "$saved" ]]; then
+    echo "Backup ilegível: $BACKUP_FILE" >&2
+    exit 1
+  fi
+  echo "Restaurando: $saved"
+  gsettings set "$SCHEMA" custom-keybindings "$saved"
+  echo "Rollback aplicado."
+}
+
+case "$MODE" in
+  --rollback) rollback ;;
+  --apply)
+    backup
+    apply
+    echo "Atalhos aplicados. Use --rollback para desfazer." >&2
+    ;;
+  --plan|--dry-run) apply ;;
+  *) apply ;;
+esac
