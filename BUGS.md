@@ -129,13 +129,37 @@ comportamento. Nenhuma correção entra sem teste (AGENTS.md, DoD).
 - **Teste:** `tests/config.test.js` — "expands ~ in configured paths" e
   "expandPath handles ~, $HOME, ${HOME} and relative forms".
 
-## Pendentes (não corrigidos aqui)
+## Retirados por decisão
 
-### P1 — `changes/nexus-energy/` é scaffolding sem implementação
-O commit `e5fb393` adiciona `changes/nexus-energy/` descrevendo `src/energy.py`,
-`tests/energy_test.py` e `scripts/validate-ledger.py` — **nenhum dos três
-existe**. O `tasks.md` referencia `python -m unittest` num projeto Node.
-Decisão pendente: implementar o termostato Φ ou remover o change.
+### `changes/nexus-energy/` — removido (2026-09-27)
+O change descrevia um termostato global Φ (detectar caos via entropia H(T) e
+morte térmica via mutual information I(M;T) sobre o grafo NEXUS). Removido por
+decisão do Bruno. Três razões, todas verificáveis:
+
+1. **Aponta para arquitetura inexistente.** `context.lock.json` cita
+   `ADR-0030 AST Parsing` e `DEC-NEXUS-Φ Energy Function`. A lista de ADRs salta
+   de 0029 para 0034 — não há 0030. Não há DEC sobre Φ. O `base_commit` é a
+   string literal `FROZEN_UNTIL_REPO_AVAILABLE`.
+2. **Tautologia autorreferente, num repo que já documentou isso.**
+   `NEXUS/docs/10_Fundacao/REVISAO_CRITICA.md` desmonta exatamente essa família
+   de construções (Higgs, φ, curvatura): *"75% das 'hipóteses confirmadas' são
+   tautologias — nossos operadores são lentes que nós mesmos fabricamos e depois
+   'validamos' medindo o que definimos."* Um limiar fixo sobre métricas
+   autodefinidas dispara porque o limiar foi escolhido, não porque algo foi
+   descoberto.
+3. **Sensor sem substrato.** Φ precisa de `reflections` e `context_events`.
+   Ambas as tabelas têm **0 linhas**, junto com `hypothesis`,
+   `reasoning_checkpoint` e `module_synthesis` — enquanto `ast_nodes` tem
+   616.707 e `ast_edges` 616.155. O termostato teria lido o sistema como "sem
+   dados", não como "morto". O problema que ele nomeava (616k nós, zero
+   reflexões) é real; o instrumento não conseguia vê-lo.
+
+O problema real foi registrado como card dekah em vez do Φ. O que o termostato
+acertava — "morte térmica" como detecção de Learning parado — permanece válido como
+critério de **staffing verificável** (tabela X vazia = sistema parado), sem
+limiar mágico.
+
+## Pendentes (não corrigidos aqui)
 
 ### P2 — nome `gnome-extension/` obsoleto
 `gnome-extension/extension.js` usa `imports.misc.extensionUtils`, removido no
